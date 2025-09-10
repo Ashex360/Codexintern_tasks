@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Todo App</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h2>Todo Application</h2>
+
+        <!-- Register Section -->
+        <div class="section">
+            <h3>Register</h3>
+            <input id="regUser" placeholder="Username">
+            <input id="regPass" type="password" placeholder="Password">
+            <button onclick="register()">Register</button>
+        </div>
+
+        <!-- Login Section -->
+        <div class="section">
+            <h3>Login</h3>
+            <input id="loginUser" placeholder="Username">
+            <input id="loginPass" type="password" placeholder="Password">
+            <button onclick="login()">Login</button>
+        </div>
+
+        <!-- Todo Section -->
+        <div id="todoSection" class="section" style="display:none;">
+            <h3>Manage Todos</h3>
+            <input id="todoTitle" placeholder="Title">
+            <input id="todoDesc" placeholder="Description">
+            <button onclick="createTodo()">Add Todo</button>
+
+            <ul id="todoList"></ul>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
