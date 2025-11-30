@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ash's Editable Lifeline (Firebase)</title>
+  <style>
+    :root{--accent:#6c5ce7;--muted:#666}
+    body{font-family:Inter,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;margin:0;background:#f7f7fb;color:#111}
+    .container{max-width:900px;margin:36px auto;padding:18px}
+    header{display:flex;align-items:center;justify-content:space-between}
+    h1{margin:0;font-size:24px}
+    p.lead{color:var(--muted);margin:6px 0 18px}
+
+    /* Timeline */
+    .timeline{position:relative;padding:24px 0}
+    .timeline::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:4px;background:linear-gradient(180deg,#eee,#ddd);transform:translateX(-50%)}
+    .card{position:relative;width:46%;padding:16px;background:#fff;border-radius:12px;box-shadow:0 6px 18px rgba(20,20,50,0.06);margin:18px 0}
+    .left{margin-right:4%;left:0}
+    .right{margin-left:4%;left:54%}
+    .item{position:relative}
+    .dot{position:absolute;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;background:var(--accent);border:4px solid #fff;top:24px}
+    .meta{font-size:13px;color:var(--muted);margin-bottom:8px}
+    .title{font-weight:600;margin:0 0 8px}
+    .desc{margin:0;color:#333;white-space:pre-wrap}
+
+    /* Buttons & forms */
+    .controls{display:flex;gap:8px;align-items:center}
+    button{background:var(--accent);color:#fff;border:0;padding:8px 12px;border-radius:8px;cursor:pointer}
+    button.ghost{background:transparent;color:var(--accent);border:1px solid rgba(108,92,231,0.14)}
+    .small{padding:6px 8px;font-size:13px}
+    .admin-panel{margin:12px 0;padding:12px;border-radius:10px;background:#fff;box-shadow:0 6px 18px rgba(20,20,50,0.04)}
+    input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e6f2;margin-top:8px}
+    label{font-size:13px;color:var(--muted)}
+
+    /* Responsive */
+    @media(max-width:800px){
+      .card{width:86%;left:6%}
+      .left,.right{left:6%}
+      .timeline::before{left:20px}
+      .dot{left:20px;transform:none}
+    }
+
+    .auth{display:flex;gap:8px;align-items:center}
+    .hidden{display:none}
+    .img-preview{max-width:100%;border-radius:8px;margin-top:8px}
+    .muted{color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>My Lifeline — Editable</h1>
+        <p class="lead">Show your journey, skills, projects and milestones. Click any event to edit (admin only).</p>
+      </div>
+      <div class="auth" id="authArea">
+        <div id="userEmail" class="muted"></div>
+        <button id="loginBtn" class="small">Admin Login</button>
+        <button id="logoutBtn" class="small hidden">Logout</button>
+      </div>
+    </header>
+
+    <div id="adminPanel" class="admin-panel hidden">
+      <strong>Admin Panel — Add / Edit Events</strong>
+      <div style="margin-top:10px">
+        <label>Year / Date <input id="inputDate" placeholder="2023 or 2023-05-10"></label>
+        <label>Title <input id="inputTitle" placeholder="E.g., Joined internship at X"></label>
+        <label>Description <textarea id="inputDesc" rows="3" placeholder="Describe this milestone..."></textarea></label>
+        <label>Image URL (optional) <input id="inputImage" placeholder="https://..."></label>
+        <label>Order (smaller = earlier) <input id="inputOrder" type="number" value="0"></label>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="saveBtn">Save</button>
+          <button id="cancelEdit" class="ghost">Cancel</button>
+          <button id="deleteBtn" class="ghost hidden">Delete</button>
+        </div>
+      </div>
+    </div>
+
+    <main>
+      <div class="controls" style="justify-content:space-between;margin-bottom:10px">
+        <div><small class="muted">Public view — anyone can read. Only signed-in admin can edit.</small></div>
+        <div>
+          <button id="newEventBtn" class="small ghost hidden">+ New Event</button>
+        </div>
+      </div>
+
+      <section id="timeline" class="timeline"></section>
+    </main>
+
+    <footer style="margin-top:30px;color:var(--muted);font-size:13px">Tip: Use concise titles and keep descriptions short. You can add images by pasting an image URL.</footer>
+  </div>
+
+  <!-- Firebase (compat) SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <script>
+    // ====== CONFIG: Replace with your Firebase project's config ======
+    const firebaseConfig = {
+      apiKey: "AIzaSyCaC69Hrp5V334Ghj8raJuoj3cHeKJXSyI",
+      authDomain: "my-journey-82b6e.firebaseapp.com",
+      projectId: "my-journey-82b6e",
+      storageBucket: "my-journey-82b6e.firebasestorage.app",
+      messagingSenderId: "65465333156",
+      appId: "1:65465333156:web:2ce4e33cb1851cf0177d31",
+      measurementId: "G-YN69BECFRX"
+    };
+    // ================================================================
+
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // UI elements
+    const timelineEl = document.getElementById('timeline');
+    const adminPanel = document.getElementById('adminPanel');
+    const newEventBtn = document.getElementById('newEventBtn');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userEmail = document.getElementById('userEmail');
+
+    const inputDate = document.getElementById('inputDate');
+    const inputTitle = document.getElementById('inputTitle');
+    const inputDesc = document.getElementById('inputDesc');
+    const inputImage = document.getElementById('inputImage');
+    const inputOrder = document.getElementById('inputOrder');
+    const saveBtn = document.getElementById('saveBtn');
+    const cancelEdit = document.getElementById('cancelEdit');
+    const deleteBtn = document.getElementById('deleteBtn');
+
+    let editingId = null;
+
+    // Auth: simple email+password prompt (admin)
+    loginBtn.addEventListener('click', async ()=>{
+      const email = prompt('Admin email:');
+      const pw = prompt('Password:');
+      if(!email||!pw)return;
+      try{
+        await auth.signInWithEmailAndPassword(email,pw);
+      }catch(e){
+        if(e.code === 'auth/user-not-found'){
+          if(confirm('User not found. Create new admin user?')){
+            await auth.createUserWithEmailAndPassword(email,pw);
+          }
+        }else{
+          alert(e.message);
+        }
+      }
+    });
+
+    logoutBtn.addEventListener('click', ()=>auth.signOut());
+
+    // Toggle UI on auth state
+    auth.onAuthStateChanged(user=>{
+      if(user){
+        userEmail.textContent = user.email;
+        loginBtn.classList.add('hidden');
+        logoutBtn.classList.remove('hidden');
+        adminPanel.classList.remove('hidden');
+        newEventBtn.classList.remove('hidden');
+      }else{
+        userEmail.textContent = '';
+        loginBtn.classList.remove('hidden');
+        logoutBtn.classList.add('hidden');
+        adminPanel.classList.add('hidden');
+        newEventBtn.classList.add('hidden');
+      }
+    });
+
+    // Open new event editor
+    newEventBtn.addEventListener('click', ()=>{
+      editingId = null; clearForm(); adminPanel.scrollIntoView({behavior:'smooth'});
+      deleteBtn.classList.add('hidden');
+    });
+
+    cancelEdit.addEventListener('click', ()=>{ editingId=null; clearForm(); });
+
+    saveBtn.addEventListener('click', async ()=>{
+      const data = {
+        date: inputDate.value || new Date().getFullYear().toString(),
+        title: inputTitle.value || '(no title)',
+        desc: inputDesc.value || '',
+        image: inputImage.value || '',
+        order: Number(inputOrder.value || 0),
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      };
+      try{
+        if(editingId){
+          await db.collection('lifeline_events').doc(editingId).update(data);
+          alert('Updated');
+        }else{
+          data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+          await db.collection('lifeline_events').add(data);
+          alert('Saved');
+        }
+        clearForm(); editingId=null;
+      }catch(e){alert(e.message)}
+    });
+
+    deleteBtn.addEventListener('click', async ()=>{
+      if(!editingId) return;
+      if(!confirm('Delete this event?')) return;
+      try{ await db.collection('lifeline_events').doc(editingId).delete(); alert('Deleted'); clearForm(); editingId=null;}catch(e){alert(e.message)}
+    });
+
+    function clearForm(){ inputDate.value=''; inputTitle.value=''; inputDesc.value=''; inputImage.value=''; inputOrder.value='0'; deleteBtn.classList.add('hidden'); }
+
+    // Realtime listener: order ascending, then date
+    db.collection('lifeline_events').orderBy('order','asc').onSnapshot(snap=>{
+      const items = [];
+      snap.forEach(doc=>{ items.push({id:doc.id, ...doc.data()}); });
+      renderTimeline(items);
+    });
+
+    function renderTimeline(items){
+      timelineEl.innerHTML = '';
+      // Sort by order then date (fallback)
+      items.sort((a,b)=> (a.order - b.order) || (String(a.date).localeCompare(String(b.date))));
+      items.forEach((it,idx)=>{
+        const side = (idx%2===0)?'left':'right';
+        const wrapper = document.createElement('div'); wrapper.className='item';
+        const dot = document.createElement('div'); dot.className='dot'; wrapper.appendChild(dot);
+
+        const card = document.createElement('div'); card.className='card '+side; 
+        const meta = document.createElement('div'); meta.className='meta'; meta.textContent = it.date || '';
+        const title = document.createElement('h3'); title.className='title'; title.textContent = it.title || '';
+        const desc = document.createElement('p'); desc.className='desc'; desc.textContent = it.desc || '';
+        card.appendChild(meta); card.appendChild(title); card.appendChild(desc);
+        if(it.image){ const img = document.createElement('img'); img.src = it.image; img.alt='image'; img.className='img-preview'; card.appendChild(img); }
+
+        // click to edit (only for signed-in admin)
+        card.style.cursor='pointer';
+        card.addEventListener('click', ()=>{
+          const user = auth.currentUser;
+          if(!user){ window.scrollTo({top:0,behavior:'smooth'}); alert('Admin only: please log in to edit.'); return; }
+          // populate form
+          editingId = it.id;
+          inputDate.value = it.date || '';
+          inputTitle.value = it.title || '';
+          inputDesc.value = it.desc || '';
+          inputImage.value = it.image || '';
+          inputOrder.value = it.order || 0;
+          deleteBtn.classList.remove('hidden');
+          adminPanel.scrollIntoView({behavior:'smooth'});
+        });
+
+        wrapper.appendChild(card);
+        timelineEl.appendChild(wrapper);
+      });
+    }
+
+    // Initial empty view message
+    timelineEl.innerHTML = '<p style="text-align:center;color:var(--muted)">Loading your lifeline... (no events yet)</p>';
+
+  </script>
+
+  <!--
+    SETUP NOTES (do these steps before running the page):
+    1) Create a Firebase project at https://console.firebase.google.com
+    2) Enable Authentication -> Email/Password.
+    3) Enable Firestore (start in test mode while developing).
+    4) Replace firebaseConfig at top with your project's config (found in Project Settings -> Web SDK).
+    5) (Optional) Set Firestore rules to allow reads to anyone, writes only for authenticated users:
+       service cloud.firestore {
+         match /databases/{database}/documents {
+           match /lifeline_events/{doc} {
+             allow read: if true;
+             allow write: if request.auth != null;
+           }
+         }
+       }
+    6) Open this file in a browser (use a simple static server like "npx http-server" or VS Code Live Server) and login as admin.
+
+    FEATURES you get with this single-file demo:
+    - Public read-only timeline
+    - Admin login (email/password) to add/edit/delete events
+    - Real-time updates via Firestore snapshot listener
+    - Simple image URL preview and ordering by "order" field
+
+    NEXT STEPS / IMPROVEMENTS:
+    - Add image upload using Firebase Storage.
+    - Add drag-and-drop reordering.
+    - Allow public comments/likes on each event.
+    - Add rich text / markdown for descriptions.
+    - Add export to PDF feature.
+  -->
+</body>
+</html>
